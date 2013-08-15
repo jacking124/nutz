@@ -30,6 +30,8 @@ import org.nutz.lang.util.Context;
  */
 public class NutEntity<T> implements Entity<T> {
 
+    private static final Object[] EMTRY_ARG = new Object[]{};
+
     /**
      * 按照 Java 字段名索引映射字段
      */
@@ -184,7 +186,7 @@ public class NutEntity<T> implements Entity<T> {
         if (null != bc)
             this.bornByRS = bc.getBorning();
         else if (null == bornByDefault)
-        	throw new DaoException("Need non-arg constructor : " + type);
+            throw new DaoException("Need non-arg constructor : " + type);
 
         // 映射
         this.ones = new LinkFieldSet();
@@ -195,10 +197,10 @@ public class NutEntity<T> implements Entity<T> {
     public T getObject(ResultSet rs, FieldMatcher matcher) {
         // 构造时创建对象
         if (null != bornByRS)
-            return bornByRS.born(Lang.array(rs));
+            return bornByRS.born(rs);
 
         // 通过反射每个字段逐次设置对象
-        T re = bornByDefault.born(new Object[]{});
+        T re = bornByDefault.born(EMTRY_ARG);
         if (null == matcher)
             for (MappingField fld : fields)
                 fld.injectValue(re, rs);
@@ -212,7 +214,7 @@ public class NutEntity<T> implements Entity<T> {
     }
 
     public T getObject(Record rec) {
-        T obj = bornByDefault.born(new Object[]{});
+        T obj = bornByDefault.born(EMTRY_ARG);
         for (MappingField fld : fields)
             fld.injectValue(obj, rec);
         return obj;
@@ -231,9 +233,9 @@ public class NutEntity<T> implements Entity<T> {
                 if (byJava.containsKey(name) && byJava.get(name).isCompositePk())
                     theComposites.add(byJava.get(name));
                 else
-                    throw Lang.makeThrow(    "Fail to find comosite field '%s' in class '%s'!",
-                                            name,
-                                            type.getName());
+                    throw Lang.makeThrow("Fail to find comosite field '%s' in class '%s'!",
+                                         name,
+                                         type.getName());
             }
             this.pkType = PkType.COMPOSITE;
         } else if (null != this.theId) {
@@ -276,9 +278,9 @@ public class NutEntity<T> implements Entity<T> {
             manymanys.add(lnk);
             break;
         default:
-            throw Lang.makeThrow(    "It is a miracle in Link field: '%s'(%s)",
-                                    lnk.getName(),
-                                    lnk.getEntity().getType().getName());
+            throw Lang.makeThrow("It is a miracle in Link field: '%s'(%s)",
+                                 lnk.getName(),
+                                 lnk.getEntity().getType().getName());
         }
     }
 
@@ -354,8 +356,8 @@ public class NutEntity<T> implements Entity<T> {
         List<LinkField> reManys = manys.getList(regex);
         List<LinkField> reManymanys = manymanys.getList(regex);
         List<LinkField> re = new ArrayList<LinkField>(reOnes.size()
-                                                        + reManys.size()
-                                                        + reManymanys.size());
+                                                      + reManys.size()
+                                                      + reManymanys.size());
         re.addAll(reOnes);
         re.addAll(reManys);
         re.addAll(reManymanys);
