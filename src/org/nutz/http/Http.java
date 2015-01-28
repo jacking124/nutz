@@ -17,15 +17,13 @@ public class Http {
         public static String getBoundary(String contentType) {
             if (null == contentType)
                 return null;
-            int pos = contentType.indexOf(";");
-            if (pos <= 10)
-                return null;
-            if (!contentType.substring(0, pos).equalsIgnoreCase("multipart/form-data"))
-                return null;
-            pos = contentType.indexOf("=", pos);
-            if (pos < 0)
-                return null;
-            return contentType.substring(pos + 1);
+            for (String tmp : contentType.split(";")) {
+                tmp = tmp.trim();
+                if (tmp.startsWith("boundary=")) {
+                    return tmp.substring("boundary=".length());
+                }
+            }
+            return null;
         }
 
         public static String formatName(String name, String filename, String contentType) {
@@ -78,18 +76,39 @@ public class Http {
             throw Lang.wrapThrow(e);
         }
     }
-    
+
     public static String post(String url, Map<String, Object> params, String inenc, String reenc) {
-    	return Sender.create(Request.create(url, METHOD.POST, params, null).setEnc(inenc)).send().getContent(reenc);
+        return Sender.create(Request.create(url, METHOD.POST, params, null).setEnc(inenc))
+                     .send()
+                     .getContent(reenc);
     }
 
-    public static ProxySwitcher proxySwitcher;
+    protected static ProxySwitcher proxySwitcher;
+
+    protected static boolean autoSwitch;
+
+    public static void setAutoSwitch(boolean use) {
+        autoSwitch = use;
+    }
 
     public static void setHttpProxy(String host, int port) {
         final Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port));
         proxySwitcher = new ProxySwitcher() {
             public Proxy getProxy(URL url) {
                 return proxy;
+            }
+
+            public Proxy getProxy(Request req) {
+                if ("close".equals(req.getHeader().get("NoProxy")))
+                    return null;
+                String url = req.getUrl().toString();
+                if (url.startsWith("http") && url.contains("://") && url.length() > "https://".length()) {
+                    url = url.substring(url.indexOf("://") + "://".length());
+                    if (url.startsWith("127.0.0") || url.startsWith("localhost"))
+                        return null;
+                }
+                req.getHeader().set("Connection", "close");
+                return getProxy(req.getUrl());
             }
         };
     }
@@ -99,6 +118,19 @@ public class Http {
         proxySwitcher = new ProxySwitcher() {
             public Proxy getProxy(URL url) {
                 return proxy;
+            }
+
+            public Proxy getProxy(Request req) {
+                if ("close".equals(req.getHeader().get("NoProxy")))
+                    return null;
+                String url = req.getUrl().toString();
+                if (url.startsWith("http") && url.contains("://") && url.length() > "https://".length()) {
+                    url = url.substring(url.indexOf("://"));
+                    if (url.startsWith("127.0.0") || url.startsWith("localhost"))
+                        return null;
+                }
+                req.getHeader().set("Connection", "close");
+                return getProxy(req.getUrl());
             }
         };
     }

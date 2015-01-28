@@ -13,14 +13,16 @@ import org.nutz.mvc.ActionContext;
  *
  */
 public class MethodInvokeProcessor extends AbstractProcessor{
-
-    public void process(ActionContext ac) throws Throwable {
+	
+	public void process(ActionContext ac) throws Throwable {
         Object module = ac.getModule();
         Method method = ac.getMethod();
         Object[] args = ac.getMethodArgs();
         try {
-            Object re = method.invoke(module, args);
-            ac.setMethodReturn(re);
+//        	if (Mvcs.disableFastClassInvoker)
+        		ac.setMethodReturn(method.invoke(module, args));
+//        	else
+//        		ac.setMethodReturn(FastClassFactory.get(module.getClass()).invoke(module, method, args));
             doNext(ac);
         } 
         catch (IllegalAccessException e) {
@@ -33,5 +35,4 @@ public class MethodInvokeProcessor extends AbstractProcessor{
             throw e.getCause();
         }
     }
-
 }

@@ -1,6 +1,8 @@
 package org.nutz.lang;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -10,13 +12,20 @@ import java.util.regex.Pattern;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpression;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 
 import org.nutz.lang.util.Callback2;
+import org.nutz.lang.util.NutMap;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 /**
  * XML 的快捷帮助函数
@@ -33,6 +42,31 @@ public abstract class Xmls {
      */
     public static DocumentBuilder xmls() throws ParserConfigurationException {
         return DocumentBuilderFactory.newInstance().newDocumentBuilder();
+    }
+
+    /**
+     * 快捷的解析 XML 文件的帮助方法，它会主动关闭输入流
+     * 
+     * @param ins
+     *            XML 文件输入流
+     * @return Document 对象
+     */
+    public static Document xml(InputStream ins) {
+        try {
+            return xmls().parse(ins);
+        }
+        catch (SAXException e) {
+            throw Lang.wrapThrow(e);
+        }
+        catch (IOException e) {
+            throw Lang.wrapThrow(e);
+        }
+        catch (ParserConfigurationException e) {
+            throw Lang.wrapThrow(e);
+        }
+        finally {
+            Streams.safeClose(ins);
+        }
     }
 
     /**
@@ -64,7 +98,35 @@ public abstract class Xmls {
         Element sub = firstChild(ele, subTagName);
         if (null == sub)
             return null;
-        return Strings.sNull(Strings.trim(sub.getTextContent()), "");
+        return getText(sub);
+    }
+
+    public static String getText(Element ele) {
+        StringBuilder sb = new StringBuilder();
+        joinText(ele, sb);
+        return Strings.trim(sb);
+    }
+
+    public static void joinText(Element ele, StringBuilder sb) {
+        if (null == ele)
+            return;
+        NodeList nl = ele.getChildNodes();
+        for (int i = 0; i < nl.getLength(); i++) {
+            Node nd = nl.item(i);
+            switch (nd.getNodeType()) {
+            case Node.TEXT_NODE:
+                sb.append(nd.getNodeValue());
+                break;
+            case Node.CDATA_SECTION_NODE:
+                sb.append(nd.getNodeValue());
+                break;
+            case Node.ELEMENT_NODE:
+                joinText((Element) nd, sb);
+                break;
+            default:
+                break;
+            }
+        }
     }
 
     /**
@@ -100,6 +162,66 @@ public abstract class Xmls {
             public void invoke(int index, Element cld, int length) {
                 tag[0] = cld;
                 Lang.Break();
+            }
+        });
+        return tag[0];
+    }
+
+    /**
+     * 从一个 XML 元素开始，根据一条 XPath 获取一个元素
+     * 
+     * @param ele
+     *            XML 元素
+     * @param xpath
+     *            要获取的元素的 XPath
+     * @return 元素，null 表示不存在
+     */
+    public static Element getEle(Element ele, String xpath) {
+        XPathFactory factory = XPathFactory.newInstance();
+        XPath xp = factory.newXPath();
+        try {
+            XPathExpression expression = xp.compile(xpath);
+            return (Element) expression.evaluate(ele, XPathConstants.NODE);
+        }
+        catch (XPathExpressionException e) {
+            throw Lang.wrapThrow(e);
+        }
+
+    }
+
+    /**
+     * 从某个元素里获取一个指定下标的子元素
+     * 
+     * @param ele
+     *            XML 元素
+     * @param index
+     *            子元素下标（0 base）
+     * @return 子元素
+     */
+    public static Element getChild(Element ele, int index) {
+        return getChild(ele, index, null);
+    }
+
+    /**
+     * 从某个元素里获取一个指定下标且指定名称的子元素
+     * 
+     * @param ele
+     *            XML 元素
+     * @param index
+     *            子元素下标（0 base）
+     * @param regex
+     *            元素名称的正则表达式
+     * @return 子元素
+     */
+    public static Element getChild(Element ele, final int index, String regex) {
+        final int pos = index;
+        final Element[] tag = new Element[1];
+        eachChildren(ele, null, new Each<Element>() {
+            public void invoke(int index, Element cld, int length) {
+                if (index >= pos) {
+                    tag[0] = cld;
+                    Lang.Break();
+                }
             }
         });
         return tag[0];
@@ -164,7 +286,8 @@ public abstract class Xmls {
      * @return 一个子元素的列表
      */
     public static List<Element> children(Element ele, String regex) {
-        final List<Element> list = new ArrayList<Element>(ele.getChildNodes().getLength());
+        final List<Element> list = new ArrayList<Element>(ele.getChildNodes()
+                                                             .getLength());
         eachChildren(ele, regex, new Each<Element>() {
             public void invoke(int index, Element cld, int length) {
                 list.add(cld);
@@ -195,8 +318,34 @@ public abstract class Xmls {
      * @param callback
      *            回调
      */
-    public static void eachChildren(Element ele, String regex, final Each<Element> callback) {
+    public static void eachChildren(Element ele,
+                                    String regex,
+                                    final Each<Element> callback) {
         Xmls.eachChildren(ele, regex, callback, 0);
+    }
+
+    /**
+     * 判断某个元素下是否有子元素
+     * 
+     * @param ele
+     *            元素
+     * @param regex
+     *            子元素名称的正则表达式，如果为 null，则元素内如果有任意元素都会返回 false
+     * @return 是否有子元素
+     */
+    public static boolean hasChild(Element ele, String regex) {
+        NodeList nl = ele.getChildNodes();
+        int len = nl.getLength();
+        for (int i = 0; i < len; i++) {
+            Node nd = nl.item(i);
+            if (nd instanceof Element) {
+                if (null == regex)
+                    return false;
+                if (((Element) nd).getTagName().matches(regex))
+                    return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -211,7 +360,10 @@ public abstract class Xmls {
      * @param off
      *            偏移量。0 表示从第一个迭代。 -1 表示从最后一个迭代。-2表示从倒数第二个迭代
      */
-    public static void eachChildren(Element ele, String regex, final Each<Element> callback, int off) {
+    public static void eachChildren(Element ele,
+                                    String regex,
+                                    final Each<Element> callback,
+                                    int off) {
         if (null == ele || null == callback)
             return;
 
@@ -276,7 +428,8 @@ public abstract class Xmls {
         NamedNodeMap nodeMap = ele.getAttributes();
         Map<String, String> attrs = new HashMap<String, String>(nodeMap.getLength());
         for (int i = 0; i < nodeMap.getLength(); i++) {
-            attrs.put(nodeMap.item(i).getNodeName(), nodeMap.item(i).getNodeValue());
+            attrs.put(nodeMap.item(i).getNodeName(), nodeMap.item(i)
+                                                            .getNodeValue());
         }
         return attrs;
     }
@@ -291,5 +444,53 @@ public abstract class Xmls {
     public static String getAttr(Element ele, String attrName) {
         Node node = ele.getAttributes().getNamedItem(attrName);
         return node != null ? node.getNodeValue() : null;
+    }
+
+    /**
+     * 根据一个 XML 节点，将其变成一个 Map。
+     * <p/>
+     * <b>注意: 不支持混合节点</b>
+     * 
+     * @param ele
+     *            元素
+     * 
+     * @return 一个 Map 对象
+     */
+    public static NutMap asMap(Element ele) {
+        return asMap(ele, false);
+    }
+
+    /**
+     * 根据一个 XML 节点，将其变成一个 Map。
+     * <p/>
+     * <b>注意: 不支持混合节点</b>
+     * 
+     * @param ele
+     *            元素
+     * @param lowFirst
+     *            是否把所有key的首字母都小写
+     * 
+     * @return 一个 Map 对象
+     */
+    public static NutMap asMap(Element ele, final boolean lowFirst) {
+        final NutMap map = new NutMap();
+        eachChildren(ele, new Each<Element>() {
+            public void invoke(int index, Element _ele, int length)
+                    throws ExitLoop, ContinueLoop, LoopException {
+                String key = _ele.getNodeName();
+                if (lowFirst)
+                    key = Strings.lowerFirst(key);
+                Map<String, Object> tmp = asMap(_ele, lowFirst);
+                if (!tmp.isEmpty()) {
+                    map.setv(key, tmp);
+                    return;
+                }
+                String val = getText(_ele);
+                if (!Strings.isBlank(val)) {
+                    map.setv(key, val);
+                }
+            }
+        });
+        return map;
     }
 }

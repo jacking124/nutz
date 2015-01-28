@@ -26,6 +26,7 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -35,6 +36,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -47,6 +49,7 @@ import org.nutz.lang.stream.StringWriter;
 import org.nutz.lang.util.ClassTools;
 import org.nutz.lang.util.Context;
 import org.nutz.lang.util.NutMap;
+import org.nutz.lang.util.NutType;
 import org.nutz.lang.util.SimpleContext;
 
 /**
@@ -124,9 +127,7 @@ public abstract class Lang {
      *            参数
      * @return 运行时异常
      */
-    public static RuntimeException wrapThrow(Throwable e,
-                                             String fmt,
-                                             Object... args) {
+    public static RuntimeException wrapThrow(Throwable e, String fmt, Object... args) {
         return new RuntimeException(String.format(fmt, args), e);
     }
 
@@ -157,8 +158,7 @@ public abstract class Lang {
      * @return 包裹后对象
      */
     @SuppressWarnings("unchecked")
-    public static <T extends Throwable> T wrapThrow(Throwable e,
-                                                    Class<T> wrapper) {
+    public static <T extends Throwable> T wrapThrow(Throwable e, Class<T> wrapper) {
         if (wrapper.isAssignableFrom(e.getClass()))
             return (T) e;
         return Mirror.me(wrapper).born(e);
@@ -384,7 +384,7 @@ public abstract class Lang {
      * 较方便的创建一个数组，比如：
      * 
      * <pre>
-     * Pet[] pets = Lang.array("A", "B", "A"); => ["A","B","A"]
+     * String[] strs = Lang.array("A", "B", "A"); => ["A","B","A"]
      * </pre>
      * 
      * @param eles
@@ -399,8 +399,8 @@ public abstract class Lang {
      * 较方便的创建一个没有重复的数组，比如：
      * 
      * <pre>
-     * Pet[] pets = Lang.arrayUniq("A","B","A");  => ["A","B"]
-     * Pet[] pets = Lang.arrayUniq();  => null
+     * String[] strs = Lang.arrayUniq("A","B","A");  => ["A","B"]
+     * String[] strs = Lang.arrayUniq();  => null
      * </pre>
      * 
      * 返回的顺序会遵循输入的顺序
@@ -538,9 +538,7 @@ public abstract class Lang {
                 arr[0] = e;
                 return arr;
             }
-            T[] arr = (T[]) Array.newInstance(eles.getClass()
-                                                  .getComponentType(),
-                                              eles.length + 1);
+            T[] arr = (T[]) Array.newInstance(eles.getClass().getComponentType(), eles.length + 1);
             arr[0] = e;
             for (int i = 0; i < eles.length; i++) {
                 arr[i + 1] = eles[i];
@@ -569,9 +567,7 @@ public abstract class Lang {
                 arr[0] = e;
                 return arr;
             }
-            T[] arr = (T[]) Array.newInstance(eles.getClass()
-                                                  .getComponentType(),
-                                              eles.length + 1);
+            T[] arr = (T[]) Array.newInstance(eles.getClass().getComponentType(), eles.length + 1);
             for (int i = 0; i < eles.length; i++) {
                 arr[i] = eles[i];
             }
@@ -709,10 +705,7 @@ public abstract class Lang {
      *            数组
      * @return 拼合后的字符串
      */
-    public static <T> StringBuilder concat(int offset,
-                                           int len,
-                                           Object c,
-                                           T[] objs) {
+    public static <T> StringBuilder concat(int offset, int len, Object c, T[] objs) {
         StringBuilder sb = new StringBuilder();
         if (null == objs || len < 0 || 0 == objs.length)
             return sb;
@@ -876,8 +869,7 @@ public abstract class Lang {
      *            列表类型
      * @return 列表对象
      */
-    public static <E> List<E> collection2list(Collection<?> col,
-                                              Class<E> eleType) {
+    public static <E> List<E> collection2list(Collection<?> col, Class<E> eleType) {
         if (null == col)
             return null;
         List<E> list = new ArrayList<E>(col.size());
@@ -1072,8 +1064,7 @@ public abstract class Lang {
      * @throws FailToCastObjectException
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    public static <T> T map2Object(Map<?, ?> src, Class<T> toType)
-            throws FailToCastObjectException {
+    public static <T> T map2Object(Map<?, ?> src, Class<T> toType) throws FailToCastObjectException {
         if (null == toType)
             throw new FailToCastObjectException("target type is Null");
         // 类型相同
@@ -1088,15 +1079,13 @@ public abstract class Lang {
                 return (T) map;
             }
             catch (Exception e) {
-                throw new FailToCastObjectException("target type fail to born!",
-                                                    unwrapThrow(e));
+                throw new FailToCastObjectException("target type fail to born!", unwrapThrow(e));
             }
 
         }
         // 数组
         if (toType.isArray())
-            return (T) Lang.collection2array(src.values(),
-                                             toType.getComponentType());
+            return (T) Lang.collection2array(src.values(), toType.getComponentType());
         // List
         if (List.class == toType) {
             return (T) Lang.collection2list(src.values());
@@ -1158,16 +1147,14 @@ public abstract class Lang {
                             map = (Map) ft.newInstance();
                         }
                         catch (Exception e) {
-                            throw new FailToCastObjectException("target type fail to born!",
-                                                                e);
+                            throw new FailToCastObjectException("target type fail to born!", e);
                         }
                     }
                     // 赋值
                     final Class<?> valType = Mirror.getGenericTypes(field, 1);
                     each(v, new Each<Entry>() {
                         public void invoke(int i, Entry en, int length) {
-                            map.put(en.getKey(),
-                                    Castors.me().castTo(en.getValue(), valType));
+                            map.put(en.getKey(), Castors.me().castTo(en.getValue(), valType));
                         }
                     });
                     vv = map;
@@ -1207,7 +1194,7 @@ public abstract class Lang {
      * @return Map 对象
      */
     public static NutMap map(String key, Object v) {
-        return new NutMap().putv(key, v);
+        return new NutMap().addv(key, v);
     }
 
     /**
@@ -1247,10 +1234,24 @@ public abstract class Lang {
     /**
      * 根据一段 JSON 字符串，生产一个新的上下文对象
      * 
+     * @param fmt
+     *            JSON 字符串模板
+     * @param args
+     *            模板参数
+     * 
+     * @return 一个新创建的上下文对象
+     */
+    public static Context contextf(String fmt, Object... args) {
+        return context(Lang.mapf(fmt, args));
+    }
+
+    /**
+     * 根据一段 JSON 字符串，生产一个新的上下文对象
+     * 
      * @return 一个新创建的上下文对象
      */
     public static Context context(String str) {
-        return context().putAll(map(str));
+        return context(map(str));
     }
 
     /**
@@ -1434,9 +1435,7 @@ public abstract class Lang {
                 Map map = (Map) obj;
                 int len = map.size();
                 int i = 0;
-                if (null != eType
-                    && eType != Object.class
-                    && eType.isAssignableFrom(Entry.class)) {
+                if (null != eType && eType != Object.class && eType.isAssignableFrom(Entry.class)) {
                     for (Object v : map.entrySet())
                         try {
                             callback.invoke(i++, (T) v, len);
@@ -1449,9 +1448,7 @@ public abstract class Lang {
                 } else {
                     for (Object v : map.entrySet())
                         try {
-                            callback.invoke(i++,
-                                            (T) ((Entry) v).getValue(),
-                                            len);
+                            callback.invoke(i++, (T) ((Entry) v).getValue(), len);
                         }
                         catch (ContinueLoop e) {}
                         catch (ExitLoop e) {
@@ -1696,8 +1693,7 @@ public abstract class Lang {
      *            Map 的类型
      * @return Map 对象
      */
-    public static <T extends Map<String, Object>> T obj2map(Object obj,
-                                                            Class<T> mapType) {
+    public static <T extends Map<String, Object>> T obj2map(Object obj, Class<T> mapType) {
         try {
             T map = mapType.newInstance();
             Lang.obj2map(obj, map, new HashMap<Object, Object>());
@@ -1737,8 +1733,7 @@ public abstract class Lang {
      *            集合对象
      * @return 集合对象
      */
-    public static <T extends Collection<E>, E> T enum2collection(Enumeration<E> enums,
-                                                                 T cols) {
+    public static <T extends Collection<E>, E> T enum2collection(Enumeration<E> enums, T cols) {
         while (enums.hasMoreElements())
             cols.add(enums.nextElement());
         return cols;
@@ -1796,12 +1791,9 @@ public abstract class Lang {
      * @throws ClassNotFoundException
      *             如果无法用当前线程的ClassLoader加载
      */
-    public static Class<?> loadClass(String className)
-            throws ClassNotFoundException {
+    public static Class<?> loadClass(String className) throws ClassNotFoundException {
         try {
-            return Thread.currentThread()
-                         .getContextClassLoader()
-                         .loadClass(className);
+            return Thread.currentThread().getContextClassLoader().loadClass(className);
         }
         catch (ClassNotFoundException e) {
             return Class.forName(className);
@@ -1816,12 +1808,10 @@ public abstract class Lang {
     public static boolean isJDK6() {
         InputStream is = null;
         try {
-            String classFileName = Lang.class.getName().replace('.', '/')
-                                   + ".class";
+            String classFileName = Lang.class.getName().replace('.', '/') + ".class";
             is = ClassTools.getClassLoader().getResourceAsStream(classFileName);
             if (is == null)
-                is = ClassTools.getClassLoader()
-                               .getResourceAsStream("/" + classFileName);
+                is = ClassTools.getClassLoader().getResourceAsStream("/" + classFileName);
             if (is != null && is.available() > 8) {
                 is.skip(7);
                 return is.read() > 49;
@@ -1867,8 +1857,7 @@ public abstract class Lang {
      * @param me
      * @param field
      */
-    public static Type getFieldType(Mirror<?> me, String field)
-            throws NoSuchFieldException {
+    public static Type getFieldType(Mirror<?> me, String field) throws NoSuchFieldException {
         return getFieldType(me, me.getField(field));
     }
 
@@ -1900,12 +1889,13 @@ public abstract class Lang {
 
     /**
      * 当一个类使用<T,K>来定义泛型时,本方法返回类的一个字段的具体类型。
-     * 
+     *
      * @param me
      * @param type
      */
     public static Type getGenericsType(Mirror<?> me, Type type) {
         Type[] types = me.getGenericsTypes();
+        Type t = type;
         if (type instanceof TypeVariable && types != null && types.length > 0) {
             Type[] tvs = me.getType().getTypeParameters();
             for (int i = 0; i < tvs.length; i++) {
@@ -1915,6 +1905,25 @@ public abstract class Lang {
                 }
             }
         }
+        if(!type.equals(t)) {
+            return type;
+        }
+        if (types != null && types.length > 0 && type instanceof ParameterizedType) {
+            ParameterizedType pt = (ParameterizedType) type;
+
+            if (pt.getActualTypeArguments().length >= 0) {
+                NutType nt = new NutType();
+                nt.setOwnerType(pt.getOwnerType());
+                nt.setRawType(pt.getRawType());
+                Type[] tt = new Type[pt.getActualTypeArguments().length];
+                for (int i = 0; i < tt.length; i++) {
+                    tt[i] = types[i];
+                }
+                nt.setActualTypeArguments(tt);
+                return nt;
+            }
+        }
+
         return type;
     }
 
@@ -2122,10 +2131,7 @@ public abstract class Lang {
      * @return 数字签名
      */
     public static String digest(String algorithm, CharSequence cs) {
-        return digest(algorithm,
-                      Strings.getBytesUTF8(null == cs ? "" : cs),
-                      null,
-                      1);
+        return digest(algorithm, Strings.getBytesUTF8(null == cs ? "" : cs), null, 1);
     }
 
     /**
@@ -2141,10 +2147,7 @@ public abstract class Lang {
      *            迭代次数
      * @return 数字签名
      */
-    public static String digest(String algorithm,
-                                byte[] bytes,
-                                byte[] salt,
-                                int iterations) {
+    public static String digest(String algorithm, byte[] bytes, byte[] salt, int iterations) {
         try {
             MessageDigest md = MessageDigest.getInstance(algorithm);
 
@@ -2208,8 +2211,7 @@ public abstract class Lang {
     public static String fixedHexString(byte[] hashBytes) {
         StringBuffer sb = new StringBuffer();
         for (int i = 0; i < hashBytes.length; i++) {
-            sb.append(Integer.toString((hashBytes[i] & 0xff) + 0x100, 16)
-                             .substring(1));
+            sb.append(Integer.toString((hashBytes[i] & 0xff) + 0x100, 16).substring(1));
         }
 
         return sb.toString();
@@ -2261,5 +2263,87 @@ public abstract class Lang {
             synchronized (lock) {
                 lock.notifyAll();
             }
+    }
+
+    public static void runInAnThread(Runnable runnable) {
+        new Thread(runnable).start();
+    }
+
+    /**
+     * map对象浅过滤,返回值是一个新的map
+     * 
+     * @param source
+     *            原始的map对象
+     * @param prefix
+     *            包含什么前缀,并移除前缀
+     * @param include
+     *            正则表达式 仅包含哪些key(如果有前缀要求,则已经移除了前缀)
+     * @param exclude
+     *            正则表达式 排除哪些key(如果有前缀要求,则已经移除了前缀)
+     * @param map
+     *            映射map, 原始key--目标key (如果有前缀要求,则已经移除了前缀)
+     * @return 经过过滤的map,与原始map不是同一个对象
+     */
+    public static Map<String, Object> filter(Map<String, Object> source,
+                                             String prefix,
+                                             String include,
+                                             String exclude,
+                                             Map<String, String> keyMap) {
+        LinkedHashMap<String, Object> dst = new LinkedHashMap<String, Object>();
+        if (source == null || source.isEmpty())
+            return dst;
+
+        Pattern includePattern = include == null ? null : Pattern.compile(include);
+        Pattern excludePattern = exclude == null ? null : Pattern.compile(exclude);
+
+        for (Entry<String, Object> en : source.entrySet()) {
+            String key = en.getKey();
+            if (prefix != null) {
+                if (key.startsWith(prefix))
+                    key = key.substring(prefix.length());
+                else
+                    continue;
+            }
+            if (includePattern != null && !includePattern.matcher(key).find())
+                continue;
+            if (excludePattern != null && excludePattern.matcher(key).find())
+                continue;
+            if (keyMap != null && keyMap.containsKey(key))
+                dst.put(keyMap.get(key), en.getValue());
+            else
+                dst.put(key, en.getValue());
+        }
+        return dst;
+    }
+
+    /**
+     * 获得访问者的IP地址, 反向代理过的也可以获得
+     * 
+     * @param request
+     * @return
+     */
+    public static String getIP(HttpServletRequest request) {
+        String ip = request.getHeader("x-forwarded-for");
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
+    }
+
+    /**
+     * @return 返回当前程序运行的根目录
+     */
+    public static String runRootPath() {
+        String cp = Lang.class.getClassLoader().getResource("").toExternalForm();
+        if (cp.startsWith("file:")) {
+            cp = cp.substring("file:".length());
+        }
+        return cp;
     }
 }

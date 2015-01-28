@@ -326,8 +326,13 @@ final class JsonTokenScan {
 
 		switch (c) {
 		case 'v':
-			while (nextChar() != MapStart) {}
-			return readMap();
+			while (true) {
+			    int z = nextChar();
+			    if (z == '{')
+			        return readMap();
+			    if (z == '[')
+			        return readList();
+			}
 		case MapStart:
 			return readMap();
 		case ListStart:
@@ -379,6 +384,8 @@ final class JsonTokenScan {
 			return (char) Integer.valueOf(new String(hex), 16).intValue();
 		case 'b': // 这个支持一下又何妨?
 			return ' ';// 空格
+		case 'v' :
+			return ' ';// replace by blackspace
 		case 'f':
 			return '\f';
 		default:

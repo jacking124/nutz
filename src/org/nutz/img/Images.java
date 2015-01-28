@@ -14,6 +14,7 @@ import java.awt.image.DataBufferByte;
 import java.awt.image.Raster;
 import java.awt.image.RenderedImage;
 import java.awt.image.WritableRaster;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -34,6 +35,7 @@ import javax.imageio.stream.ImageOutputStream;
 
 import org.nutz.lang.Files;
 import org.nutz.lang.Lang;
+import org.nutz.repo.Base64;
 import org.nutz.repo.gif.AnimatedGifEncoder;
 
 /**
@@ -126,7 +128,8 @@ public class Images {
         AffineTransform at = new AffineTransform();
         at.rotate(ang, w / 2, h / 2);// 旋转图象
         at.translate(x, y);
-        AffineTransformOp op = new AffineTransformOp(at, AffineTransformOp.TYPE_NEAREST_NEIGHBOR);
+        AffineTransformOp op = new AffineTransformOp(at,
+                                                     AffineTransformOp.TYPE_NEAREST_NEIGHBOR);
         op.filter(image, rotatedImage);
         image = rotatedImage;
         return image;
@@ -155,8 +158,11 @@ public class Images {
      * @throws IOException
      *             当读写文件失败时抛出
      */
-    public static BufferedImage zoomScale(Object srcIm, File taIm, int w, int h, Color bgColor)
-            throws IOException {
+    public static BufferedImage zoomScale(Object srcIm,
+                                          File taIm,
+                                          int w,
+                                          int h,
+                                          Color bgColor) throws IOException {
         BufferedImage old = read(srcIm);
         BufferedImage im = Images.zoomScale(old, w, h, bgColor);
         write(im, taIm);
@@ -186,8 +192,11 @@ public class Images {
      * @throws IOException
      *             当读写文件失败时抛出
      */
-    public static BufferedImage zoomScale(String srcPath, String taPath, int w, int h, Color bgColor)
-            throws IOException {
+    public static BufferedImage zoomScale(String srcPath,
+                                          String taPath,
+                                          int w,
+                                          int h,
+                                          Color bgColor) throws IOException {
         File srcIm = Files.findFile(srcPath);
         if (null == srcIm)
             throw Lang.makeThrow("Fail to find image file '%s'!", srcPath);
@@ -211,7 +220,10 @@ public class Images {
      * 
      * @return 被转换后的图像
      */
-    public static BufferedImage zoomScale(BufferedImage im, int w, int h, Color bgColor) {
+    public static BufferedImage zoomScale(BufferedImage im,
+                                          int w,
+                                          int h,
+                                          Color bgColor) {
         if (w == -1 || h == -1) {
             return zoomScale(im, w, h);
         }
@@ -317,7 +329,8 @@ public class Images {
      * @throws IOException
      *             当读写文件失败时抛出
      */
-    public static BufferedImage clipScale(Object srcIm, File taIm, int w, int h) throws IOException {
+    public static BufferedImage clipScale(Object srcIm, File taIm, int w, int h)
+            throws IOException {
         BufferedImage old = read(srcIm);
         BufferedImage im = Images.clipScale(old, w, h);
         write(im, taIm);
@@ -343,8 +356,10 @@ public class Images {
      * @throws IOException
      *             当读写文件失败时抛出
      */
-    public static BufferedImage clipScale(String srcPath, String taPath, int w, int h)
-            throws IOException {
+    public static BufferedImage clipScale(String srcPath,
+                                          String taPath,
+                                          int w,
+                                          int h) throws IOException {
         File srcIm = Files.findFile(srcPath);
         if (null == srcIm)
             throw Lang.makeThrow("Fail to find image file '%s'!", srcPath);
@@ -371,8 +386,10 @@ public class Images {
      * @throws IOException
      *             当读写文件失败时抛出
      */
-    public static BufferedImage clipScale(Object srcIm, File taIm, int[] startPoint, int[] endPoint)
-            throws IOException {
+    public static BufferedImage clipScale(Object srcIm,
+                                          File taIm,
+                                          int[] startPoint,
+                                          int[] endPoint) throws IOException {
         // 计算给定坐标后的图片的尺寸
         int width = endPoint[0] - startPoint[0];
         int height = endPoint[1] - startPoint[1];
@@ -381,7 +398,9 @@ public class Images {
         BufferedImage im = Images.clipScale(old.getSubimage(startPoint[0],
                                                             startPoint[1],
                                                             width,
-                                                            height), width, height);
+                                                            height),
+                                            width,
+                                            height);
 
         write(im, taIm);
         return old;
@@ -478,10 +497,15 @@ public class Images {
      */
     public static BufferedImage read(Object img) {
         try {
+            if (img instanceof CharSequence) {
+                return ImageIO.read(Files.checkFile(img.toString()));
+            }
             if (img instanceof File)
                 return ImageIO.read((File) img);
-            else if (img instanceof URL)
+
+            if (img instanceof URL)
                 img = ((URL) img).openStream();
+
             if (img instanceof InputStream) {
                 File tmp = File.createTempFile("nutz_img", ".jpg");
                 Files.write(tmp, (InputStream) img);
@@ -541,7 +565,9 @@ public class Images {
      * @param quality
      *            质量 0.1f ~ 1.0f
      */
-    public static void writeJpeg(RenderedImage im, Object targetJpg, float quality) {
+    public static void writeJpeg(RenderedImage im,
+                                 Object targetJpg,
+                                 float quality) {
         try {
             ImageWriter writer = ImageIO.getImageWritersBySuffix("jpg").next();
             ImageWriteParam param = writer.getDefaultWriteParam();
@@ -549,7 +575,11 @@ public class Images {
             param.setCompressionQuality(quality);
             ImageOutputStream os = ImageIO.createImageOutputStream(targetJpg);
             writer.setOutput(os);
-            writer.write((IIOMetadata) null, new IIOImage(im, null, null), param);
+            writer.write((IIOMetadata) null,
+                         new IIOImage(im, null, null),
+                         param);
+            os.flush();
+            os.close();
         }
         catch (IOException e) {
             throw Lang.wrapThrow(e);
@@ -605,18 +635,24 @@ public class Images {
 
             double val = y + 1.402 * (cr - 128) - k;
             val = (val - 128) * .65f + 128;
-            rgb[base] = val < 0.0 ? (byte) 0 : val > 255.0 ? (byte) 0xff : (byte) (val + 0.5);
+            rgb[base] = val < 0.0 ? (byte) 0 : val > 255.0 ? (byte) 0xff
+                                                          : (byte) (val + 0.5);
 
             val = y - 0.34414 * (cb - 128) - 0.71414 * (cr - 128) - k;
             val = (val - 128) * .65f + 128;
-            rgb[base + 1] = val < 0.0 ? (byte) 0 : val > 255.0 ? (byte) 0xff : (byte) (val + 0.5);
+            rgb[base + 1] = val < 0.0 ? (byte) 0
+                                     : val > 255.0 ? (byte) 0xff
+                                                  : (byte) (val + 0.5);
 
             val = y + 1.772 * (cb - 128) - k;
             val = (val - 128) * .65f + 128;
-            rgb[base + 2] = val < 0.0 ? (byte) 0 : val > 255.0 ? (byte) 0xff : (byte) (val + 0.5);
+            rgb[base + 2] = val < 0.0 ? (byte) 0
+                                     : val > 255.0 ? (byte) 0xff
+                                                  : (byte) (val + 0.5);
         }
 
-        raster = Raster.createInterleavedRaster(new DataBufferByte(rgb, rgb.length),
+        raster = Raster.createInterleavedRaster(new DataBufferByte(rgb,
+                                                                   rgb.length),
                                                 w,
                                                 h,
                                                 w * 3,
@@ -644,7 +680,9 @@ public class Images {
      *            帧间隔
      * @return 是否生成成功
      */
-    public static boolean writeGif(String targetFile, String[] frameFiles, int delay) {
+    public static boolean writeGif(String targetFile,
+                                   String[] frameFiles,
+                                   int delay) {
         try {
             AnimatedGifEncoder e = new AnimatedGifEncoder();
             e.setRepeat(0);
@@ -660,4 +698,48 @@ public class Images {
         }
     }
 
+    /**
+     * 生成该图片对应的 Base64 编码的字符串
+     * 
+     * @param targetFile
+     *            图片文件
+     * @return 图片对应的 Base64 编码的字符串
+     */
+    public static String encodeBase64(String targetFile) {
+        return encodeBase64(new File(targetFile));
+    }
+
+    /**
+     * 生成该图片对应的 Base64 编码的字符串
+     * 
+     * @param targetFile
+     *            图片文件
+     * @return 图片对应的 Base64 编码的字符串
+     */
+    public static String encodeBase64(File targetFile) {
+        BufferedImage image = null;
+
+        try {
+            image = ImageIO.read(targetFile);
+        }
+        catch (IOException e) {
+            throw Lang.wrapThrow(e);
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        BufferedOutputStream bos = new BufferedOutputStream(baos);
+        image.flush();
+        try {
+            ImageIO.write(image, Files.getSuffixName(targetFile), bos);
+            bos.flush();
+            bos.close();
+        }
+        catch (IOException e) {
+            throw Lang.wrapThrow(e);
+        }
+
+        byte[] bImage = baos.toByteArray();
+
+        return Base64.encodeToString(bImage, false);
+    }
 }

@@ -63,7 +63,7 @@ public class RawView implements View {
 	
 	public static final boolean DISABLE_RANGE_DOWNLOAD = false; //禁用断点续传
 
-	private String contentType;
+	protected String contentType;
 
 	public RawView(String contentType) {
 		if (Strings.isBlank(contentType))
@@ -75,23 +75,24 @@ public class RawView implements View {
 			throws Throwable {
 		// 如果用户自行设置了,那就不要再设置了!
 		if (resp.getContentType() == null) {
-			if (obj != null && obj instanceof BufferedImage && "text/plain".equals(contentType)) {
+			if (!Lang.isAndroid && obj != null && obj instanceof BufferedImage && "text/plain".equals(contentType)) {
 				contentType = contentTypeMap.get("png");
 			}
 			resp.setContentType(contentType);
 		}
 		if (obj == null)
 			return;
-		OutputStream out = resp.getOutputStream();
 		// 图片?难道是验证码?
-		if (obj instanceof BufferedImage) {
+		if (!Lang.isAndroid && obj instanceof BufferedImage) {
+			OutputStream out = resp.getOutputStream();
 			if (contentType.contains("png"))
 				ImageIO.write((BufferedImage)obj, "png", out);
 			// @see https://code.google.com/p/webm/source/browse/java/src/main/java/com/google/imageio/?repo=libwebp&name=sandbox%2Fpepijnve%2Fwebp-imageio#imageio%2Fwebp
 			else if (contentType.contains("webp"))
 				ImageIO.write((BufferedImage)obj, "webp", out);
-			else if (contentType.contains("jpg"))
+			else
 				Images.writeJpeg((BufferedImage)obj, out, 0.8f);
+			return;
 		}
 		// 文件
 		else if (obj instanceof File) {
@@ -110,6 +111,7 @@ public class RawView implements View {
 			}
 			
 			String rangeStr = req.getHeader("Range");
+			OutputStream out = resp.getOutputStream();
 			if (DISABLE_RANGE_DOWNLOAD || fileSz == 0 || (rangeStr == null || !rangeStr.startsWith("bytes=") || rangeStr.length() < "bytes=1".length())) {
 				resp.setHeader("Content-Length", "" + fileSz);
 				Streams.writeAndClose(out, Streams.fileIn(file));
@@ -144,6 +146,7 @@ public class RawView implements View {
 		// 字节数组
 		else if (obj instanceof byte[]) {
 			resp.setHeader("Content-Length", "" + ((byte[]) obj).length);
+			OutputStream out = resp.getOutputStream();
 			Streams.writeAndClose(out, (byte[]) obj);
 		}
 		// 字符数组
@@ -158,17 +161,19 @@ public class RawView implements View {
 		}
 		// 二进制流
 		else if (obj instanceof InputStream) {
+			OutputStream out = resp.getOutputStream();
 			Streams.writeAndClose(out, (InputStream) obj);
 		}
 		// 普通对象
 		else {
 			byte[] data = String.valueOf(obj).getBytes(Encoding.UTF8);
 			resp.setHeader("Content-Length", "" + data.length);
+			OutputStream out = resp.getOutputStream();
 			Streams.writeAndClose(out, data);
 		}
 	}
 
-	private static final Map<String, String> contentTypeMap = new HashMap<String, String>();
+	protected static final Map<String, String> contentTypeMap = new HashMap<String, String>();
 
 	static {
 		contentTypeMap.put("xml", "application/xml");
@@ -254,11 +259,8 @@ public class RawView implements View {
 		return !rs.isEmpty();
 	}
 	
-	public static void writeFileRange(File file, OutputStream out, RangeRange rangeRange) {
-		FileInputStream fin = null;
+	public static void writeDownloadRange(DataInputStream in, OutputStream out, RangeRange rangeRange) {
 		try {
-			fin = new FileInputStream(file);
-			DataInputStream in = new DataInputStream(fin);
 			if (rangeRange.start > 0) {
 				long start = rangeRange.start;
 				while (start > 0) {
@@ -290,6 +292,18 @@ public class RawView implements View {
 				}
 			}
 			out.flush();
+		}
+		catch (Throwable e) {
+			throw Lang.wrapThrow(e);
+		}
+	}
+	
+	public static void writeFileRange(File file, OutputStream out, RangeRange rangeRange) {
+		FileInputStream fin = null;
+		try {
+			fin = new FileInputStream(file);
+			DataInputStream in = new DataInputStream(fin);
+			writeDownloadRange(in, out, rangeRange);
 		}
 		catch (Throwable e) {
 			throw Lang.wrapThrow(e);

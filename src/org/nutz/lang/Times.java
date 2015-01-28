@@ -126,11 +126,14 @@ public abstract class Times {
      * HH:mm:ss.SSS;
      * </pre>
      * 
+     * 时间字符串后面可以跟 +8 或者 +8:00 表示 GMT+8:00 时区。 同理 -9 或者 -9:00 表示 GMT-9:00 时区
+     * 
      * @param ds
      *            时间字符串
      * @param tz
      *            你给定的时间字符串是属于哪个时区的
      * @return 时间
+     * @see #_P_TIME
      */
     public static long ams(String ds, TimeZone tz) {
         Matcher m = _P_TIME.matcher(ds);
@@ -145,29 +148,45 @@ public abstract class Times {
 
             int ms = _int(m, 16, 0);
 
-            long day = (long) D1970(yy, MM, dd);
-            long MS = day * 86400000L;
-            MS += (((long) HH) * 3600L + ((long) mm) * 60L + ss) * 1000L;
-            MS += (long) ms;
-
-            // 如果没有指定时区，那么用字符串中带有的时区信息，如果依然木有，则用系统默认时区
-            long tzOffset;
-            if (null == tz) {
-                if (!Strings.isBlank(m.group(17))) {
-                    tzOffset = Long.parseLong(m.group(19))
-                               * 3600000L
-                               * (m.group(18).charAt(0) == '-' ? -1 : 1);
-
-                } else {
-                    tzOffset = TimeZone.getDefault().getRawOffset();
-                }
+            /*
+             * zozoh: 先干掉，还是用 SimpleDateFormat 吧，"1980-05-01 15:17:23" 之前的日子
+             * 得出的时间竟然总是多 30 分钟 long day = (long) D1970(yy, MM, dd); long MS =
+             * day * 86400000L; MS += (((long) HH) * 3600L + ((long) mm) * 60L +
+             * ss) * 1000L; MS += (long) ms;
+             * 
+             * // 如果没有指定时区 ... if (null == tz) { // 那么用字符串中带有的时区信息， if
+             * (!Strings.isBlank(m.group(17))) { tz =
+             * TimeZone.getTimeZone(String.format("GMT%s%s:00", m.group(18),
+             * m.group(19))); // tzOffset = Long.parseLong(m.group(19)) // *
+             * 3600000L // * (m.group(18).charAt(0) == '-' ? -1 : 1);
+             * 
+             * } // 如果依然木有，则用系统默认时区 else { tz = TimeZone.getDefault(); } }
+             * 
+             * // 计算 return MS - tz.getRawOffset() - tz.getDSTSavings();
+             */
+            String str = String.format("%04d-%02d-%02d %02d:%02d:%02d.%03d",
+                                       yy,
+                                       MM,
+                                       dd,
+                                       HH,
+                                       mm,
+                                       ss,
+                                       ms);
+            SimpleDateFormat df = (SimpleDateFormat) DF_DATE_TIME_MS4.clone();
+            // 那么用字符串中带有的时区信息 ...
+            if (null == tz && !Strings.isBlank(m.group(17))) {
+                tz = TimeZone.getTimeZone(String.format("GMT%s%s:00", m.group(18), m.group(19)));
             }
-            // 采用指定的时区
-            else {
-                tzOffset = tz.getRawOffset();
+            // 指定时区 ...
+            if (null != tz)
+                df.setTimeZone(tz);
+            // 解析返回
+            try {
+                return df.parse(str).getTime();
             }
-            // 计算
-            return MS - tzOffset;
+            catch (ParseException e) {
+                throw Lang.wrapThrow(e);
+            }
         }
         throw Lang.makeThrow("Unexpect date format '%s'", ds);
     }
@@ -297,18 +316,7 @@ public abstract class Times {
     }
 
     // 常量数组，一年每个月多少天
-    private static final int[] _MDs = new int[]{31,
-                                                28,
-                                                31,
-                                                30,
-                                                31,
-                                                30,
-                                                31,
-                                                31,
-                                                30,
-                                                31,
-                                                30,
-                                                31};
+    private static final int[] _MDs = new int[]{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
     /**
      * 计算一个给定日期，距离 1970 年 1 月 1 日有多少天
@@ -414,6 +422,17 @@ public abstract class Times {
      */
     public static String sDTms(Date d) {
         return format(DF_DATE_TIME_MS, d);
+    }
+
+    /**
+     * 把时间转换成格式为 yy-MM-dd HH:mm:ss.SSS 的字符串
+     * 
+     * @param d
+     *            时间对象
+     * @return 该时间的字符串形式 , 格式为 yy-MM-dd HH:mm:ss.SSS
+     */
+    public static String sDTms2(Date d) {
+        return format(DF_DATE_TIME_MS2, d);
     }
 
     /**
@@ -544,6 +563,70 @@ public abstract class Times {
         return re;
     }
 
+    private static final String[] _MMM = new String[]{"Jan",
+                                                      "Feb",
+                                                      "Mar",
+                                                      "Apr",
+                                                      "May",
+                                                      "Jun",
+                                                      "Jul",
+                                                      "Aug",
+                                                      "Sep",
+                                                      "Oct",
+                                                      "Nov",
+                                                      "Dec"};
+
+    /**
+     * 将一个时间格式化成容易被人类阅读的格式
+     * 
+     * <pre>
+     * 如果 1 分钟内，打印 Just Now
+     * 如果 1 小时内，打印多少分钟
+     * 如果 1 天之内，打印多少小时之前
+     * 如果是今年之内，打印月份和日期
+     * 否则打印月份和年
+     * </pre>
+     * 
+     * @param d
+     * @return
+     */
+    public static String formatForRead(Date d) {
+        long ms = System.currentTimeMillis() - d.getTime();
+        // 如果 1 分钟内，打印 Just Now
+        if (ms < (60000)) {
+            return "Just Now";
+        }
+        // 如果 1 小时内，打印多少分钟
+        if (ms < (60 * 60000)) {
+            return "" + (ms / 60000) + "Min.";
+        }
+
+        // 如果 1 天之内，打印多少小时之前
+        if (ms < (24 * 3600 * 1000)) {
+            return "" + (ms / 3600000) + "hr.";
+        }
+
+        // 如果一周之内，打印多少天之前
+        if (ms < (7 * 24 * 3600 * 1000)) {
+            return "" + (ms / (24 * 3600000)) + "Day";
+        }
+
+        // 如果是今年之内，打印月份和日期
+        Calendar c = Calendar.getInstance();
+        int thisYear = c.get(Calendar.YEAR);
+
+        c.setTime(d);
+        int yy = c.get(Calendar.YEAR);
+        int mm = c.get(Calendar.MONTH);
+        if (thisYear == yy) {
+            int dd = c.get(Calendar.DAY_OF_MONTH);
+            return String.format("%s %d", _MMM[mm], dd);
+        }
+
+        // 否则打印月份和年
+        return String.format("%s %d", _MMM[mm], yy);
+    }
+
     /**
      * 以给定的时间格式来安全的对时间进行格式化，并返回格式化后所对应的字符串
      * 
@@ -633,9 +716,122 @@ public abstract class Times {
     }
 
     private static final DateFormat DF_DATE_TIME_MS = new SimpleDateFormat("y-M-d H:m:s.S");
+    private static final DateFormat DF_DATE_TIME_MS2 = new SimpleDateFormat("yy-MM-dd HH:mm:ss.SSS");
+    private static final DateFormat DF_DATE_TIME_MS4 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
     private static final DateFormat DF_DATE_TIME = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
     private static final DateFormat DF_DATE = new SimpleDateFormat("yyyy-MM-dd");
 
     private static final long MS_DAY = 3600L * 24 * 1000;
     private static final long MS_WEEK = MS_DAY * 7;
+
+    public static final long T_1S = 1000;
+    public static final long T_1M = 60 * 1000;
+    public static final long T_1H = 60 * 60 * 1000;
+    public static final long T_1D = 24 * 60 * 60 * 1000;
+
+    /**
+     * 方便的把时间换算成毫秒数
+     * 
+     * 支持几个单位, s(秒), m(分钟), h(小时), d(天)
+     * 
+     * 比如:
+     * 
+     * 100s -> 100000 <br>
+     * 2m -> 120000 <br>
+     * 3h -> 10800000 <br>
+     * 
+     * @param tstr
+     * @return
+     */
+    public static long toMillis(String tstr) {
+        if (Strings.isBlank(tstr)) {
+            return 0;
+        }
+        tstr = tstr.toLowerCase();
+        // FIXME 稍后改成正则判断
+        String tl = tstr.substring(0, tstr.length() - 1);
+        String tu = tstr.substring(tstr.length() - 1);
+        if (TIME_S_EN.equals(tu)) {
+            return T_1S * Long.valueOf(tl);
+        }
+        if (TIME_M_EN.equals(tu)) {
+            return T_1M * Long.valueOf(tl);
+        }
+        if (TIME_H_EN.equals(tu)) {
+            return T_1H * Long.valueOf(tl);
+        }
+        if (TIME_D_EN.equals(tu)) {
+            return T_1D * Long.valueOf(tl);
+        }
+        return Long.valueOf(tstr);
+    }
+
+    private static String TIME_S_EN = "s";
+    private static String TIME_M_EN = "m";
+    private static String TIME_H_EN = "h";
+    private static String TIME_D_EN = "d";
+
+    private static String TIME_S_CN = "秒";
+    private static String TIME_M_CN = "分";
+    private static String TIME_H_CN = "时";
+    private static String TIME_D_CN = "天";
+
+    /**
+     * 一段时间长度的毫秒数转换为一个时间长度的字符串
+     * 
+     * 1000 -> 1S
+     * 
+     * 120000 - 2M
+     * 
+     * @param mi
+     *            毫秒数
+     * @return 可读的文字
+     */
+    public static String fromMillis(long mi) {
+        return _fromMillis(mi, true);
+    }
+
+    /**
+     * fromMillis的中文版本
+     * 
+     * 1000 -> 1秒
+     * 
+     * 120000 - 2分
+     * 
+     * @param mi
+     *            毫秒数
+     * @return 可读的文字
+     */
+    public static String fromMillisCN(long mi) {
+        return _fromMillis(mi, false);
+    }
+
+    private static String _fromMillis(long mi, boolean useEnglish) {
+        if (mi <= T_1S) {
+            return "1" + (useEnglish ? TIME_S_EN : TIME_S_CN);
+        }
+        if (mi < T_1M && mi > T_1S) {
+            return (int) (mi / T_1S) + (useEnglish ? TIME_S_EN : TIME_S_CN);
+        }
+        if (mi >= T_1M && mi < T_1H) {
+            int m = (int) (mi / T_1M);
+            return m
+                   + (useEnglish ? TIME_M_EN : TIME_M_CN)
+                   + _fromMillis(mi - m * T_1M, useEnglish);
+        }
+        if (mi >= T_1H && mi < T_1D) {
+            int h = (int) (mi / T_1H);
+            return h
+                   + (useEnglish ? TIME_H_EN : TIME_H_CN)
+                   + _fromMillis(mi - h * T_1H, useEnglish);
+        }
+        if (mi >= T_1D) {
+            int d = (int) (mi / T_1D);
+            return d
+                   + (useEnglish ? TIME_D_EN : TIME_D_CN)
+                   + _fromMillis(mi - d * T_1D, useEnglish);
+        }
+        // WTF ?
+        throw Lang.impossible();
+    }
 }
