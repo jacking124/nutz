@@ -3,10 +3,10 @@ package org.nutz.lang.util;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
 import org.nutz.castor.Castors;
 import org.nutz.lang.Each;
@@ -14,14 +14,14 @@ import org.nutz.lang.Lang;
 import org.nutz.lang.Strings;
 
 /**
- * 对于 TreeMap 的一个友好封装
+ * 对于 LinkedHashMap 的一个友好封装
  * <p>
  * 同 TreeMap 不同的是，如果 get(null)，它不会抛错，就是返回 null 或默认值
  * 
  * @author zozoh(zozohtnt@gmail.com)
  */
 @SuppressWarnings("serial")
-public class NutMap extends TreeMap<String, Object> {
+public class NutMap extends LinkedHashMap<String, Object> {
 
     public static NutMap WRAP(Map<String, Object> map) {
         if (null == map)
@@ -45,6 +45,35 @@ public class NutMap extends TreeMap<String, Object> {
         this.putAll(Lang.map(json));
     }
 
+    /**
+     * 设置一个字段，如果值为 null 则表示移除
+     * 
+     * @param key
+     *            键
+     * @param v
+     *            值
+     */
+    public void setOrRemove(String key, Object v) {
+        if (null == v) {
+            this.remove(key);
+        } else {
+            this.put(key, v);
+        }
+    }
+
+    public static NutMap NEW() {
+        return new NutMap();
+    }
+
+    public static NutMap WRAP(String json) {
+        return new NutMap(json);
+    }
+
+    public Object get(String key, Object dft) {
+        Object v = get(key);
+        return null == v ? dft : v;
+    }
+
     public int getInt(String key) {
         return getInt(key, -1);
     }
@@ -55,7 +84,7 @@ public class NutMap extends TreeMap<String, Object> {
     }
 
     public float getFloat(String key) {
-        return getFloat(key, 0.0f);
+        return getFloat(key, Float.NaN);
     }
 
     public float getFloat(String key, float dft) {
@@ -94,9 +123,16 @@ public class NutMap extends TreeMap<String, Object> {
         return getString(key, null);
     }
 
+    @SuppressWarnings("rawtypes")
     public String getString(String key, String dft) {
         Object v = get(key);
-        return null == v ? dft : Castors.me().castTo(v, String.class);
+        if (v == null)
+            return dft;
+        if (v instanceof List) {
+            v = ((List) v).iterator().next();
+        }
+        // by wendal : 这还有必要castTo么?
+        return Castors.me().castTo(v, String.class);
     }
 
     public Date getTime(String key) {
@@ -108,13 +144,14 @@ public class NutMap extends TreeMap<String, Object> {
         return null == v ? dft : Castors.me().castTo(v, Date.class);
     }
 
-    public <T extends Enum<?>> T getEnum(String key, Class<T> classOfEnum) {
+    public <T extends Enum<T>> T getEnum(String key, Class<T> classOfEnum) {
         String s = getString(key);
         if (Strings.isBlank(s))
             return null;
-        return Castors.me().castTo(s, classOfEnum);
+        return Enum.valueOf(classOfEnum, s);
     }
 
+    @SuppressWarnings("unchecked")
     public boolean isEnum(String key, Enum<?>... eus) {
         if (null == eus || eus.length == 0)
             return false;
@@ -201,22 +238,17 @@ public class NutMap extends TreeMap<String, Object> {
     }
 
     /**
-     * 为 Map 增加一个名值对。
-     * <ul>
-     * <li>如果该键不存在，则添加对象。
-     * <li>如果存在并且是 List，则添加到 List。
-     * <li>创建一个 List ，并添加对象
-     * </ul>
+     * 为 Map 增加一个名值对。如果同名已经有值了，那么会将两个值合并成一个列表
      * 
      * @param key
      * @param value
      */
     @SuppressWarnings("unchecked")
-    public NutMap putv(String key, Object value) {
+    public NutMap addv(String key, Object value) {
         Object obj = get(key);
-        if (null == obj)
+        if (null == obj) {
             put(key, value);
-        else if (obj instanceof List<?>)
+        } else if (obj instanceof List<?>)
             ((List<Object>) obj).add(value);
         else {
             List<Object> list = new LinkedList<Object>();
@@ -224,6 +256,19 @@ public class NutMap extends TreeMap<String, Object> {
             list.add(value);
             put(key, list);
         }
+        return this;
+    }
+
+    /**
+     * @deprecated 本函数意义容易发生混淆，已经改名成 addv，下个版将被删除
+     * @since 1.b.51
+     */
+    public NutMap putv(String key, Object value) {
+        return addv(key, value);
+    }
+
+    public NutMap setv(String key, Object value) {
+        this.put(key, value);
         return this;
     }
 }

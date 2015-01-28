@@ -25,10 +25,21 @@ public final class Nutz {
      * <li>发布流水 - 每次发布增加 1
      * </ul>
      * 
-     * @return zTask 项目的版本号
+     * @return nutz 项目的版本号
      */
     public static String version() {
-        return "1.b.50";
+        return String.format("%d.%s.%d", majorVersion(), releaseLevel(), minorVersion());
+    }
+    
+    public static int majorVersion() {
+        return 1;
     }
 
+    public static int minorVersion() {
+        return 52;
+    }
+    
+    public static String releaseLevel() {
+        return "b";
+    }
 }

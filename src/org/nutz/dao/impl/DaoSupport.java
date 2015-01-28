@@ -18,6 +18,7 @@ import org.nutz.dao.jdbc.Jdbcs;
 import org.nutz.dao.sql.DaoStatement;
 import org.nutz.dao.sql.PojoMaker;
 import org.nutz.dao.sql.Sql;
+import org.nutz.dao.sql.SqlContext;
 import org.nutz.log.Log;
 import org.nutz.log.Logs;
 import org.nutz.trans.Atom;
@@ -151,7 +152,8 @@ public class DaoSupport {
             if (log.isWarnEnabled())
                 log.warn("Replaced a running dataSource!");
         dataSource = ds;
-        expert = Jdbcs.getExpert(ds);
+        if (expert == null)
+            expert = Jdbcs.getExpert(ds);
         pojoMaker = new NutPojoMaker(expert);
 
         meta = new DatabaseMeta();
@@ -162,6 +164,10 @@ public class DaoSupport {
                 meta.setVersion(dmd.getDatabaseProductVersion());
                 log.debug("JDBC Driver --> " + dmd.getDriverVersion());
                 log.debug("JDBC Name   --> " + dmd.getDriverName());
+                if (dmd.getDriverName().contains("mariadb") || dmd.getDriverName().contains("sqlite")) {
+                	log.warn("Auto-select fetch size to Integer.MIN_VALUE, enable for ResultSet Streaming");
+                	SqlContext.DEFAULT_FETCH_SIZE = Integer.MIN_VALUE;
+                }
             }
         });
         if (log.isDebugEnabled())

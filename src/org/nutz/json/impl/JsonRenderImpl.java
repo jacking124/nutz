@@ -4,8 +4,11 @@ import java.io.IOException;
 import java.io.Writer;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -40,6 +43,22 @@ public class JsonRenderImpl implements JsonRender {
 
     private Set<Object> memo = new HashSet<Object>();
 
+    public JsonFormat getFormat() {
+        return format;
+    }
+
+    public void setFormat(JsonFormat format) {
+        this.format = format;
+    }
+
+    public Writer getWriter() {
+        return writer;
+    }
+
+    public void setWriter(Writer writer) {
+        this.writer = writer;
+    }
+
     public void render(Object obj) throws IOException {
         if (null == obj) {
             writer.write("null");
@@ -65,7 +84,16 @@ public class JsonRenderImpl implements JsonRender {
             }
             // 日期时间
             else if (mr.isDateTimeLike()) {
-                string2Json(format.getCastors().castToString(obj));
+                boolean flag = true;
+                if (obj instanceof Date) {
+                    DateFormat df = format.getDateFormat();
+                    if (df != null) {
+                        string2Json(df.format((Date)obj));
+                        flag = false;
+                    }
+                }
+                if (flag)
+                    string2Json(format.getCastors().castToString(obj));
             }
             // 其他
             else {
@@ -90,6 +118,8 @@ public class JsonRenderImpl implements JsonRender {
             }
         }
     }
+
+    public JsonRenderImpl() {}
 
     public JsonRenderImpl(Writer writer, JsonFormat format) {
         this.format = format;
@@ -246,7 +276,7 @@ public class JsonRenderImpl implements JsonRender {
                         }
                         // 其他统统变字符串
                         else {
-                            value = value.toString();
+                            value = value2string(jef, value);
                         }
                     }
 
@@ -294,18 +324,30 @@ public class JsonRenderImpl implements JsonRender {
                     writer.append("\\n");
                     break;
                 case '\t':
+                case 0x0B: // \v
                     writer.append("\\t");
                     break;
                 case '\r':
                     writer.append("\\r");
                     break;
+                case '\f':
+                	writer.append("\\f");
+                	break;
+                case '\b':
+                	writer.append("\\b");
+                	break;
                 case '\\':
                     writer.append("\\\\");
                     break;
                 default:
-                    if (c >= 256 && format.isAutoUnicode())
-                        writer.append("\\u").append(Integer.toHexString(c)
-                                                           .toUpperCase());
+                    if (c >= 256 && format.isAutoUnicode()) {
+                        writer.append("\\u");
+                        String u = Strings.fillHex(c, 4);
+                        if (format.isUnicodeLower())
+                        	writer.write(u.toLowerCase());
+                        else
+                        	writer.write(u.toUpperCase());
+                    }
                     else
                         writer.append(c);
                 }
@@ -342,4 +384,18 @@ public class JsonRenderImpl implements JsonRender {
         writer.append(']');
     }
 
+    protected String value2string(JsonEntityField jef, Object value) {
+        if (value instanceof Date) {
+            System.out.println(jef.getDateFormat());
+            System.out.println(format.getDateFormat());
+            SimpleDateFormat df = jef.getDateFormat();
+            if (df == null) {
+                df = format.getDateFormat();
+            }
+            if (df != null) {
+                return df.format((Date)value);
+            }
+        }
+        return value.toString();
+    }
 }

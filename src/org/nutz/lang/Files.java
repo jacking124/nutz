@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -31,7 +32,7 @@ import org.nutz.lang.util.Disks;
  * @author wendal(wendal1985@gmail.com)
  * @author bonyfish(mc02cxj@gmail.com)
  */
-public abstract class Files {
+public class Files {
 
     /**
      * 读取 UTF-8 文件全部内容
@@ -301,10 +302,11 @@ public abstract class Files {
     public static String getSuffixName(String path) {
         if (null == path)
             return null;
-        int pos = path.lastIndexOf('.');
-        if (-1 == pos)
+        int p0 = path.lastIndexOf('.');
+        int p1 = path.lastIndexOf('/');
+        if (-1 == p0 || p0 < p1)
             return "";
-        return path.substring(pos + 1);
+        return path.substring(p0 + 1);
     }
 
     /**
@@ -347,6 +349,15 @@ public abstract class Files {
         if (!f.isFile())
             throw Lang.makeThrow("'%s' should be a file!", path);
         return f;
+    }
+
+    public static File createFileIfNoExists2(String path) {
+        try {
+            return createFileIfNoExists(path);
+        }
+        catch (IOException e) {
+            throw Lang.wrapThrow(e);
+        }
     }
 
     /**
@@ -455,6 +466,152 @@ public abstract class Files {
     }
 
     /**
+     * each 函数的参数类型
+     */
+    public enum LsMode {
+        /**
+         * 仅文件
+         */
+        FILE,
+        /**
+         * 仅目录
+         */
+        DIR,
+        /**
+         * 文件和目录
+         */
+        ALL
+    }
+
+    /**
+     * 在一个目录里列出所有的子文件或者目录
+     * 
+     * @param d
+     *            目录
+     * @param p
+     *            正则表达式对象，如果为空，则是全部正则表达式
+     * @param exclude
+     *            true 正则表达式匹配的文件会被忽略，false 正则表达式匹配的文件会被包含
+     * @param mode
+     *            请参看 LsMode 枚举类说明, null 表示 LsMode.ALL
+     * 
+     * @return 得到文件对象数组
+     * @see LsMode
+     */
+    public static File[] ls(File d,
+                            final Pattern p,
+                            final boolean exclude,
+                            LsMode mode) {
+        if (null == p) {
+            return d.listFiles();
+        }
+        // 全部
+        else if (null == mode || LsMode.ALL == mode) {
+            return d.listFiles(new FileFilter() {
+                public boolean accept(File f) {
+                    return p.matcher(f.getName()).find() ^ exclude;
+                }
+            });
+        }
+        // 仅文件
+        else if (LsMode.FILE == mode) {
+            return d.listFiles(new FileFilter() {
+                public boolean accept(File f) {
+                    if (!f.isFile())
+                        return false;
+                    return p.matcher(f.getName()).find() ^ exclude;
+                }
+            });
+        }
+        // 仅目录
+        else if (LsMode.DIR == mode) {
+            return d.listFiles(new FileFilter() {
+                public boolean accept(File f) {
+                    if (!f.isDirectory())
+                        return false;
+                    return p.matcher(f.getName()).find() ^ exclude;
+                }
+            });
+        }
+        // 不可能
+        throw Lang.impossible();
+    }
+
+    /**
+     * 列文件
+     * 
+     * @param d
+     *            目录对象
+     * @param regex
+     *            正则表达式
+     * @param mode
+     *            模式
+     * @return 文件列表对象
+     * @see #ls(File, Pattern, boolean, LsMode)
+     */
+    public static File[] ls(File d, String regex, LsMode mode) {
+        boolean exclude = false;
+        Pattern p = null;
+        if (!Strings.isBlank(regex)) {
+            exclude = regex.startsWith("!");
+            if (exclude) {
+                regex = Strings.trim(regex.substring(1));
+            }
+            p = Pattern.compile(regex);
+        }
+        return ls(d, p, exclude, mode);
+    }
+
+    /**
+     * @see #ls(File, String, LsMode)
+     */
+    public static File[] ls(String path, String regex, LsMode mode) {
+        return ls(checkFile(path), regex, mode);
+    }
+
+    /**
+     * @see #ls(File, String, LsMode)
+     */
+    public static File[] lsFile(File d, String regex) {
+        return ls(d, regex, LsMode.FILE);
+    }
+
+    /**
+     * @see #ls(String, String, LsMode)
+     */
+    public static File[] lsFile(String path, String regex) {
+        return ls(path, regex, LsMode.FILE);
+    }
+
+    /**
+     * @see #ls(File, String, LsMode)
+     */
+    public static File[] lsDir(File d, String regex) {
+        return ls(d, regex, LsMode.DIR);
+    }
+
+    /**
+     * @see #ls(String, String, LsMode)
+     */
+    public static File[] lsDir(String path, String regex) {
+        return ls(path, regex, LsMode.DIR);
+    }
+
+    /**
+     * @see #ls(File, String, LsMode)
+     */
+    public static File[] lsAll(File d, String regex) {
+        return ls(d, regex, LsMode.ALL);
+    }
+
+    /**
+     * @see #ls(String, String, LsMode)
+     */
+    public static File[] lsAll(String path, String regex) {
+        return ls(path, regex, LsMode.ALL);
+    }
+
+    /**
      * 从 CLASSPATH 下或从指定的本机器路径下寻找一个文件
      * 
      * @param path
@@ -463,7 +620,24 @@ public abstract class Files {
      * @return 文件对象，如果不存在，则为 null
      */
     public static File findFile(String path) {
-        return findFile(path, ClassTools.getClassLoader(), Encoding.defaultEncoding());
+        return findFile(path,
+                        ClassTools.getClassLoader(),
+                        Encoding.defaultEncoding());
+    }
+
+    /**
+     * 从 CLASSPATH 下或从指定的本机器路径下寻找一个文件
+     * 
+     * @param path
+     *            文件路径
+     * 
+     * @return 文件对象，如果不存在，则抛出一个运行时异常
+     */
+    public static File checkFile(String path) {
+        File f = findFile(path);
+        if (null == f)
+            throw Lang.makeThrow("Fail to found file '%s'", path);
+        return f;
     }
 
     /**
@@ -478,7 +652,9 @@ public abstract class Files {
      * 
      * @return 输出流
      */
-    public static InputStream findFileAsStream(String path, Class<?> klass, String enc) {
+    public static InputStream findFileAsStream(String path,
+                                               Class<?> klass,
+                                               String enc) {
         File f = new File(path);
         if (f.exists())
             try {
@@ -490,7 +666,9 @@ public abstract class Files {
         if (null != klass) {
             InputStream ins = klass.getClassLoader().getResourceAsStream(path);
             if (null == ins)
-                ins = Thread.currentThread().getContextClassLoader().getResourceAsStream(path);
+                ins = Thread.currentThread()
+                            .getContextClassLoader()
+                            .getResourceAsStream(path);
             if (null != ins)
                 return ins;
         }
@@ -597,7 +775,9 @@ public abstract class Files {
         if (null == dir || !dir.exists())
             return false;
         if (!dir.isDirectory())
-            throw new RuntimeException("\"" + dir.getAbsolutePath() + "\" should be a directory!");
+            throw new RuntimeException("\""
+                                       + dir.getAbsolutePath()
+                                       + "\" should be a directory!");
         File[] files = dir.listFiles();
         boolean re = false;
         if (null != files) {
@@ -711,7 +891,8 @@ public abstract class Files {
         if (src == null || target == null || !src.exists())
             return false;
         if (!src.isDirectory())
-            throw new IOException(src.getAbsolutePath() + " should be a directory!");
+            throw new IOException(src.getAbsolutePath()
+                                  + " should be a directory!");
         if (!target.exists())
             if (!makeDir(target))
                 return false;
@@ -720,9 +901,13 @@ public abstract class Files {
         if (null != files) {
             for (File f : files) {
                 if (f.isFile())
-                    re &= copyFile(f, new File(target.getAbsolutePath() + "/" + f.getName()));
+                    re &= copyFile(f, new File(target.getAbsolutePath()
+                                               + "/"
+                                               + f.getName()));
                 else
-                    re &= copyDir(f, new File(target.getAbsolutePath() + "/" + f.getName()));
+                    re &= copyDir(f, new File(target.getAbsolutePath()
+                                              + "/"
+                                              + f.getName()));
             }
         }
         return re;
@@ -804,6 +989,15 @@ public abstract class Files {
     }
 
     /**
+     * @param f
+     *            文件对象
+     * @return 文件或者目录名
+     */
+    public static String getName(File f) {
+        return getName(f.getPath());
+    }
+
+    /**
      * @param path
      *            全路径
      * @return 文件或者目录名
@@ -826,7 +1020,8 @@ public abstract class Files {
      *            要清除的目录名
      * @throws IOException
      */
-    public static void cleanAllFolderInSubFolderes(File dir, String name) throws IOException {
+    public static void cleanAllFolderInSubFolderes(File dir, String name)
+            throws IOException {
         File[] files = dir.listFiles();
         for (File d : files) {
             if (d.isDirectory())
@@ -896,7 +1091,9 @@ public abstract class Files {
     public static File[] dirs(File dir) {
         return dir.listFiles(new FileFilter() {
             public boolean accept(File f) {
-                return !f.isHidden() && f.isDirectory() && !f.getName().startsWith(".");
+                return !f.isHidden()
+                       && f.isDirectory()
+                       && !f.getName().startsWith(".");
             }
         });
     }
@@ -920,7 +1117,9 @@ public abstract class Files {
     private static void scanDirs(File rootDir, List<File> list) {
         File[] dirs = rootDir.listFiles(new FileFilter() {
             public boolean accept(File f) {
-                return !f.isHidden() && f.isDirectory() && !f.getName().startsWith(".");
+                return !f.isHidden()
+                       && f.isDirectory()
+                       && !f.getName().startsWith(".");
             }
         });
         if (dirs != null) {

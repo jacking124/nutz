@@ -4,8 +4,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
+import java.text.SimpleDateFormat;
 
 import org.nutz.json.JsonField;
+import org.nutz.json.JsonIgnore;
 import org.nutz.lang.Lang;
 import org.nutz.lang.Mirror;
 import org.nutz.lang.Strings;
@@ -16,11 +18,6 @@ import org.nutz.lang.inject.Injecting;
 
 public class JsonEntityField {
 	
-	/**
-	 * 为避免用户无意中踩进这个坑(也许值这么巧就是默认忽略的值),要求用户自行启动这个功能
-	 */
-	protected static boolean USE_IGNORE_NUMBER = false;
-
     private String name;
 
     private boolean ignore;
@@ -40,6 +37,10 @@ public class JsonEntityField {
     private boolean isInt;
     
     private boolean isDouble;
+    
+    private boolean hasJsonIgnore;
+    
+    private SimpleDateFormat dateFormat;
 
     public boolean isForceString() {
         return forceString;
@@ -95,17 +96,25 @@ public class JsonEntityField {
             jef.setIgnore(true);
         }
 
-        Mirror<?> fldMirror = Mirror.me(fld.getType());
-        jef.isInt = fldMirror.isInt();
-        jef.isDouble = fldMirror.isDouble() || fldMirror.isFloat();
 
         // 判断字段是否被强制输出为字符串
         if (null != jf) {
             jef.setForceString(jf.forceString());
+            if (!Strings.isBlank(jf.dateFormat())) {
+                jef.dateFormat = new SimpleDateFormat(jf.dateFormat());
+            }
+        }
+        
+        JsonIgnore jsonIgnore = fld.getAnnotation(JsonIgnore.class);
+        if (jsonIgnore != null) {
+            Mirror<?> fldMirror = Mirror.me(fld.getType());
+            jef.isInt = fldMirror.isInt();
+            jef.isDouble = fldMirror.isDouble() || fldMirror.isFloat();
+        	jef.hasJsonIgnore = true;
             if (jef.isDouble)
-            	jef.ignoreNullDouble = jf.null_double();
+            	jef.ignoreNullDouble = jsonIgnore.null_double();
             if (jef.isInt)
-            	jef.ignoreNullInt = jf.null_int();
+            	jef.ignoreNullInt = jsonIgnore.null_int();
         }
         
         return jef;
@@ -132,7 +141,7 @@ public class JsonEntityField {
         Object val = ejecting.eject(obj);
         if (val == null)
         	return null;
-        if (USE_IGNORE_NUMBER) {
+        if (hasJsonIgnore) {
             if (isInt && ((Number)val).intValue() == ignoreNullInt)
             	return null;
             if (isDouble && ((Number)val).doubleValue() == ignoreNullDouble)
@@ -140,13 +149,8 @@ public class JsonEntityField {
         }
         return val;
     }
-
-    /**
-     * 启用或关闭"忽略特定数值"的功能
-     * @param using 是否启用该功能
-     */
-    public static final void setUseIgnoreNumber(boolean using) {
-    	USE_IGNORE_NUMBER = using;
-    	System.err.println("Nutz.Json using IgnoreNumber=" + using + ".  Call by " + Thread.currentThread().getStackTrace()[2]);
+    
+    public SimpleDateFormat getDateFormat() {
+        return dateFormat == null ? null : (SimpleDateFormat)dateFormat.clone();
     }
 }
